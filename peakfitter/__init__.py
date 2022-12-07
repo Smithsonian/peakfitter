@@ -15,3 +15,6 @@ if not _ASTROPY_SETUP_:
     from .gaussfitter import (collapse_gaussfit, gaussfit, moments, multigaussfit,
                              n_gaussian, onedgaussfit, onedgaussian, onedmoments,
                              twodgaussian)
+    from .peakfitter import (collapse_peakfit, peakfit, multipeakfit,
+                            n_peak, onedpeakfit, onedpeak,
+                            twodpeak)
