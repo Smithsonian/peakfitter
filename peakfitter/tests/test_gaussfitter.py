@@ -1,7 +1,7 @@
 from __future__ import division,absolute_import
 import unittest
 import numpy as np
-import peakfitter as gf
+import peafitter as gf
 
 class GaussfitCase(unittest.TestCase):
     def test_simple_fit(self):
