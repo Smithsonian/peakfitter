@@ -1,11 +1,11 @@
 """
 ===========
-gaussfitter
+peakfitter
 ===========
-.. codeauthor:: Adam Ginsburg <adam.g.ginsburg@gmail.com> 3/17/08
+.. codeauthor:: Paul Grimes 12/2022, derived for code by Adam Ginsburg <adam.g.ginsburg@gmail.com> 3/17/08
 
-Latest version available at <https://github.com/keflavich/gaussfitter>, where
-it was moved from google code on January 30, 2014
+Latest version available at <https://github.com/smithsonian/peakfitter>, where
+it was forked from Gaussfitter <https://github.com/keflavich/gaussfitter>, 12/2022
 
 """
 from __future__ import print_function, division, absolute_import
@@ -14,6 +14,8 @@ import numpy as np
 from numpy.ma import median
 from numpy import pi
 from .mpfit import mpfit
+
+from .gaussfitter import moments
 """
 Note about mpfit/leastsq:
 I switched everything over to the Markwardt mpfit routine for a few reasons,
@@ -30,65 +32,31 @@ Alternative: lmfit
     -implement WCS-based gaussian fitting with correct coordinates
 """
 
-
-def moments(data, circle, rotate, vheight, estimator=median, angle_guess=45.0,
-            **kwargs):
+def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=None):
     """
-    Returns (height, amplitude, x, y, width_x, width_y, rotation angle)
-    the gaussian parameters of a 2D distribution by calculating its
-    moments.  Depending on the input parameters, will only output
-    a subset of the above.
-
-    If using masked arrays, pass estimator=np.ma.median
-    """
-    total = np.abs(data).sum()
-    Y, X = np.indices(data.shape)  # python convention: reverse x,y np.indices
-    y = np.argmax((X*np.abs(data)).sum(axis=1)/total)
-    x = np.argmax((Y*np.abs(data)).sum(axis=0)/total)
-
-    col = data[int(y), :]
-    width_x = np.sqrt(np.abs((np.arange(col.size)-y)**2*col).sum() / np.abs(col).sum())
-
-    row = data[:, int(x)]
-    width_y = np.sqrt(np.abs((np.arange(row.size)-x)**2*row).sum() / np.abs(row).sum())
-
-    width = (width_x + width_y) / 2.
-    height = estimator(data.ravel())
-    amplitude = data.max()-height
-    mylist = [amplitude, x, y]
-    if np.isnan((width_y,width_x,height,amplitude)).any():
-        raise ValueError("something is nan")
-    if vheight:
-        mylist = [height] + mylist
-    if not circle:
-        mylist = mylist + [width_x, width_y]
-        if rotate:
-            # rotation "moment" is a little above zero to initiate the fitter
-            # with something not locked at the edge of parameter space
-            mylist = mylist + [angle_guess]
-            # also, circles don't rotate.
-    else:
-        mylist = mylist + [width]
-    return mylist
-
-
-def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
-    """
-    Returns a 2d gaussian function of the form:
+    Returns a 2d peak function of the form:
     x' = np.cos(rota) * x - np.sin(rota) * y
     y' = np.sin(rota) * x + np.cos(rota) * y
     (rota should be in degrees)
-    g = b + a * np.exp ( - ( ((x-center_x)/width_x)**2 +
-    ((y-center_y)/width_y)**2 ) / 2 )
+    g = b + a * <peakfunc>((x'-center_x), width_x) *
+    <peakfunc>((y'-center_y), width_y)
+
+    peakfunc (func) : 1d numpy ufunc that takes parameters of the form of inpars.
+    
+    peakfunc should be nomralized to a maximum of 1.0.
 
     inpars = [b,a,center_x,center_y,width_x,width_y,rota]
              (b is background height, a is peak amplitude)
-
+             
     where x and y are the input parameters of the returned function,
-    and all other parameters are specified by this function
-
+    and all other parameters are specified by this function.
+    
     However, the above values are passed by list.  The list should be:
     inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
+    
+    Widths are defined such that the peakfunc is reasonably approximated by
+    a Gaussian peak with parameters inpar, so that calculating the moments of the 
+    data to be fitted produces a reasonable starting point for the fitting.
 
     You can choose to ignore / neglect some of the above input parameters using
     the following options:
@@ -96,18 +64,18 @@ def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
     Parameters
     ----------
     circle : bool
-        default is an elliptical gaussian (different x, y widths), but can
-        reduce the input by one parameter if it's a circular gaussian
+        default is an elliptical peak (different x, y widths), but can
+        reduce the input by one parameter if it's a circular peak
     rotate : bool
-        default allows rotation of the gaussian ellipse.  Can
+        default allows rotation of the peak ellipse.  Can
         remove last parameter by setting rotate=0
     vheight : bool
         default allows a variable height-above-zero, i.e. an
-        additive constant for the Gaussian function.  Can remove first
+        additive constant for the peak function.  Can remove first
         parameter by setting this to 0
     shape : tuple
         if shape is set (to a 2-parameter list) then returns an image with the
-        gaussian defined by inpars
+        peak defined by inpars
     """
     inpars_old = inpars
     inpars = list(inpars)
@@ -142,23 +110,22 @@ def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
                          " and you've input: " + str(inpars_old) +
                          " circle=%d, rotate=%d, vheight=%d" % (circle, rotate, vheight))
 
-    def rotgauss(x, y):
+    def rotpeak(x, y):
         if rotate:
             xp = x * np.cos(rota) - y * np.sin(rota)
             yp = x * np.sin(rota) + y * np.cos(rota)
         else:
             xp = x
             yp = y
-        g = height+amplitude*np.exp(-(((rcen_x-xp)/width_x)**2 +
-                                      ((rcen_y-yp)/width_y)**2)/2.)
+        g = height+amplitude*peakfunc(xp-rcen_x, width_x)*peakfunc(yp-rcen_y, width_y)
         return g
     if shape is not None:
-        return rotgauss(*np.indices(shape))
+        return rotpeak(*np.indices(shape))
     else:
-        return rotgauss
+        return rotpeak
 
 
-def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
+def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=False,
              circle=False, fixed=np.repeat(False, 7),
              limitedmin=[False, False, False, False, True, True, True],
              limitedmax=[False, False, False, False, False, False, True],
@@ -166,13 +133,16 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
              maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, vheight=True,
              quiet=True, returnmp=False, returnfitimage=False, **kwargs):
     """
-    Gaussian fitter with the ability to fit a variety of different forms of
-    2-dimensional gaussian.
+    Peak fitter with the ability to fit a variety of different forms of
+    2-dimensional peaks.
 
     Parameters
     ----------
     data : `numpy.ndarray`
         2-dimensional data array
+    peakfunc : `numpy.ufunc`
+        1-dimensional function with signature `(x_vals, width)` that returns a
+        peaked function that can be approximated by a Gaussian of `width`
     err : `numpy.ndarray` or None
         error array with same size as data array.  Defaults to 1 everywhere.
     params : (height, amplitude, x, y, width_x, width_y, rota)
@@ -244,8 +214,8 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
 
     def mpfitfun(data, err):
         def f(p, fjac):
-            twodg = twodgaussian(p, circle, rotate, vheight)
-            delta = (data - twodg(*np.indices(data.shape))) / err
+            twodp = twodpeak(peakfunc, p, circle, rotate, vheight)
+            delta = (data - twodp(*np.indices(data.shape))) / err
             return [0, delta.compressed()]
         return f
 
@@ -304,7 +274,7 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
     else:
         returns = mp.params
     if returnfitimage:
-        fitimage = twodgaussian(mp.params, circle, rotate, vheight)(*np.indices(data.shape))
+        fitimage = twodpeak(peakfunc, mp.params, circle, rotate, vheight)(*np.indices(data.shape))
         returns = (returns, fitimage)
     return returns
 
@@ -359,15 +329,15 @@ def onedmoments(Xax, data, vheight=True, estimator=median, negamp=None,
     return mylist
 
 
-def onedgaussian(x, H, A, dx, w):
+def onedpeak(peakfunc, x, H, A, dx, w):
     """
-    Returns a 1-dimensional gaussian of form
-    H+A*np.exp(-(x-dx)**2/(2*w**2))
+    Returns a 1-dimensional peak of form
+    H+A*peakfunc((x-dx), w)
     """
-    return H+A*np.exp(-(x-dx)**2/(2*w**2))
+    return H+A*peakfunc((x-dx), w)
 
 
-def onedgaussfit(xax, data, err=None,
+def onedpeakfit(peakfunc, xax, data, err=None,
                  params=[0, 1, 0, 1], fixed=[False, False, False, False],
                  limitedmin=[False, False, False, True],
                  limitedmax=[False, False, False, False],
@@ -377,6 +347,8 @@ def onedgaussfit(xax, data, err=None,
     """
     Parameters
     ----------
+    peakfunc : np.ufunc
+        peaked normalized function to fit to data
     xax : np.array
         x axis
     data : np.array
@@ -406,11 +378,11 @@ def onedgaussfit(xax, data, err=None,
     chi2
     """
 
-    def mpfitfun(x, y, err):
+    def mpfitfun(peakfunc, x, y, err):
         if err is None:
-            def f(p, fjac=None): return [0, (y-onedgaussian(x, *p))]
+            def f(p, fjac=None): return [0, (y-onedpeak(x, *p, peakfunc))]
         else:
-            def f(p, fjac=None): return [0, (y-onedgaussian(x, *p))/err]
+            def f(p, fjac=None): return [0, (y-onedpeak(x, *p, peakfunc))/err]
         return f
 
     if xax is None:
@@ -439,7 +411,7 @@ def onedgaussfit(xax, data, err=None,
                 'limited': [limitedmin[3], limitedmax[3]], 'fixed': fixed[3],
                 'parname': "WIDTH", 'error': 0}]
 
-    mp = mpfit(mpfitfun(xax, data, err), parinfo=parinfo, quiet=quiet)
+    mp = mpfit(mpfitfun(peakfunc, xax, data, err), parinfo=parinfo, quiet=quiet)
     mpp = mp.params
     mpperr = mp.perror
     chi2 = mp.fnorm
@@ -454,12 +426,12 @@ def onedgaussfit(xax, data, err=None,
             print(parinfo[i]['parname'], p, " +/- ", mpperr[i])
         print("Chi2: ", mp.fnorm, " Reduced Chi2: ", mp.fnorm/len(data), " DOF:", len(data)-len(mpp))
 
-    return mpp, onedgaussian(xax, *mpp), mpperr, chi2
+    return mpp, onedpeak(peakfunc, xax, *mpp), mpperr, chi2
 
 
-def n_gaussian(pars=None, a=None, dx=None, sigma=None):
+def n_peak(peakfunc, pars=None, a=None, dx=None, sigma=None):
     """
-    Returns a function that sums over N gaussians, where N is the length of
+    Returns a function that sums over N peaks of shape peakfunc, where N is the length of
     a,dx,sigma *OR* N = len(pars) / 3
 
     The background "height" is assumed to be zero (you must "baseline" your
@@ -481,21 +453,23 @@ def n_gaussian(pars=None, a=None, dx=None, sigma=None):
     def g(x):
         v = np.zeros(len(x))
         for i in range(len(dx)):
-            v += a[i] * np.exp(-(x-dx[i])**2 / (2.0*sigma[i]**2))
+            v += a[i] * peakfunc(x-dx[i], sigma[i])
         return v
     return g
 
 
-def multigaussfit(xax, data, ngauss=1, err=None, params=[1, 0, 1],
+def multipeakfit(peakfunc, xax, data, npeak=1, err=None, params=[1, 0, 1],
                   fixed=[False, False, False], limitedmin=[False, False, True],
                   limitedmax=[False, False, False], minpars=[0, 0, 0],
                   maxpars=[0, 0, 0],
                   quiet=True, shh=True, veryverbose=False):
     """
-    An improvement on onedgaussfit.  Lets you fit multiple gaussians.
+    An improvement on onedpeakfit.  Lets you fit multiple peaks.
 
     Parameters
     ----------
+    peakfunc : np.ufunc
+      normalized peaked function to fit to data, of signature `(x-center, width)`.
     xax : np.array
       x axis
     data : np.array
@@ -535,33 +509,33 @@ def multigaussfit(xax, data, ngauss=1, err=None, params=[1, 0, 1],
 
     """
 
-    if len(params) != ngauss and (len(params) // 3) > ngauss:
-        ngauss = len(params) // 3
+    if len(params) != npeak and (len(params) // 3) > npeak:
+        npeak = len(params) // 3
 
     if isinstance(params, np.ndarray):
         params = params.tolist()
 
     # make sure all various things are the right length; if they're not, fix them using the defaults
     for parlist in (params, fixed, limitedmin, limitedmax, minpars, maxpars):
-        if len(parlist) != 3*ngauss:
+        if len(parlist) != 3*npeak:
             # if you leave the defaults, or enter something that can be multiplied by 3 to get
-            # to the right number of gaussians, it will just replicate
+            # to the right number of peaks, it will just replicate
             if len(parlist) == 3:
-                parlist *= ngauss
+                parlist *= npeak
             elif parlist == params:
-                parlist[:] = [1, 0, 1] * ngauss
+                parlist[:] = [1, 0, 1] * npeak
             elif parlist == fixed or parlist == limitedmax:
-                parlist[:] = [False, False, False] * ngauss
+                parlist[:] = [False, False, False] * npeak
             elif parlist == limitedmin:
-                parlist[:] = [False, False, True] * ngauss
+                parlist[:] = [False, False, True] * npeak
             elif parlist == minpars or parlist == maxpars:
-                parlist[:] = [0, 0, 0] * ngauss
+                parlist[:] = [0, 0, 0] * npeak
 
     def mpfitfun(x, y, err):
         if err is None:
-            def f(p, fjac=None): return [0, (y-n_gaussian(pars=p)(x))]
+            def f(p, fjac=None): return [0, (y-n_peak(peakfunc, pars=p)(x))]
         else:
-            def f(p, fjac=None): return [0, (y-n_gaussian(pars=p)(x))/err]
+            def f(p, fjac=None): return [0, (y-n_peak(peakfunc, pars=p)(x))/err]
         return f
 
     if xax is None:
@@ -594,10 +568,10 @@ def multigaussfit(xax, data, ngauss=1, err=None, params=[1, 0, 1],
             print(parinfo[i]['parname'], p, " +/- ", mpperr[i])
         print("Chi2: ", mp.fnorm, " Reduced Chi2: ", mp.fnorm/len(data), " DOF:", len(data)-len(mpp))
 
-    return mpp, n_gaussian(pars=mpp)(xax), mpperr, chi2
+    return mpp, n_peak(peakfunc, pars=mpp)(xax), mpperr, chi2
 
 
-def collapse_gaussfit(cube, xax=None, axis=2, negamp=False, usemoments=True,
+def collapse_peakfit(peakfunc, cube, xax=None, axis=2, negamp=False, usemoments=True,
                       nsigcut=1.0, mppsigcut=1.0, return_errors=False, **kwargs):
     import time
     std_coll = cube.std(axis=axis)
@@ -626,7 +600,7 @@ def collapse_gaussfit(cube, xax=None, axis=2, negamp=False, usemoments=True,
         print("Working on row %d with %d spectra to fit" % (i, nspec), end=' ')
         for j in range(cube.shape[2]):
             if np.abs(extremum(cube[:,i,j])) > (mean_std*nsigcut):
-                mpp, gfit, mpperr, chi2 = onedgaussfit(xax, cube[:,i,j],
+                mpp, gfit, mpperr, chi2 = onedpeakfit(peakfunc, xax, cube[:,i,j],
                     err=np.ones(cube.shape[0])*mean_std, negamp=negamp,
                     usemoments=usemoments, **kwargs)
                 if np.abs(mpp[1]) > (mpperr[1]*mppsigcut):
