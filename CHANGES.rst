@@ -1,4 +1,3 @@
 CHANGELOG
 ---------
-
- - August 8, 2014: Minor API change - ``return_all`` -> ``return_error``
+ - Dec 2022, start implementing generalized peak fitting.

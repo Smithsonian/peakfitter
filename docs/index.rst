@@ -1,9 +1,9 @@
 Documentation
 =============
 
-Gaussfitter uses the astropy template.  Documentation is here:
+Peakfitter uses the astropy template.  Documentation is here:
 
 .. toctree::
   :maxdepth: 2
 
-  gaussfitter/index.rst
+  peakfitter/index.rst
