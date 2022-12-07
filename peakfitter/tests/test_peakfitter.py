@@ -9,7 +9,7 @@ class PeakfitCase(unittest.TestCase):
         # inpars = [height,amplitude,center_x,center_y,width_x,width_y,rota]
         inpars = [0, 1, 64, 64, 8, 8,]
         def gaussfunc(x, width):
-            return np.exp(x**2/(2*width**2))
+            return np.exp(-(x**2/width**2)/2)
         
         in_data = gf.twodpeak(gaussfunc, inpars, shape=(128, 128), rotate=False)
         fit = gf.peakfit(gaussfunc, in_data, rotate=False)
@@ -19,7 +19,7 @@ class PeakfitCase(unittest.TestCase):
     def test_elliptical_fit(self):
         inpars = [0, 1, 64, 64, 4, 12, 30]
         def gaussfunc(x, width):
-            return np.exp(x**2/(2*width**2))
+            return np.exp(-(x**2/width**2)/2)
         
         in_data = gf.twodpeak(gaussfunc, inpars, shape=(128, 128))
         fit = gf.peakfit(gaussfunc, in_data)
@@ -30,7 +30,7 @@ class PeakfitCase(unittest.TestCase):
         inpars = [0, 1, 64, 64, 8, 8]
         
         def gaussfunc(x, width):
-            return np.exp(x**2/(2*width**2))
+            return np.exp(-(x**2/width**2)/2)
         
         in_data = gf.twodpeak(gaussfunc, inpars, shape=(128,128), rotate=False)
         masked_data = np.ma.array(in_data)
