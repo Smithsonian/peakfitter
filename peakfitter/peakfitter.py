@@ -131,7 +131,7 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
              limitedmin=[False, False, False, False, True, True, True],
              limitedmax=[False, False, False, False, False, False, True],
              usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 7),
-             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, vheight=True,
+             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, height=True, vheight=True,
              quiet=True, returnmp=False, returnfitimage=False, **kwargs):
     """
     Peak fitter with the ability to fit a variety of different forms of
@@ -166,6 +166,10 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
         Allow rotation of the gaussian ellipse.  Can remove
         last parameter of input & fit by setting rotate=False.
         Angle should be specified in degrees.
+    height : bool
+        Allows a variable amplitude.  Can remove the second fitter
+        parameter by setting this to ``False``, which fixes the peak height
+        to that of the fitting function.
     vheight : bool
         Allows a variable height-above-zero, i.e. an additive constant
         background for the Gaussian function.  Can remove the first fitter
@@ -203,7 +207,11 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
         # parameter at zero
         vheight=True
         params = np.concatenate([[0],params])
-        fixed[0] = 1
+        fixed[0] = True
+    if not height:
+        height=True
+        params[1] = 1.0
+        fixed[1] = True
 
     # mpfit will fail if it is given a start parameter outside the allowed range:
     for i in range(len(params)):
