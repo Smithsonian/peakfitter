@@ -41,7 +41,8 @@ def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=No
     g = b + a * <peakfunc>((x'-center_x), width_x) *
     <peakfunc>((y'-center_y), width_y)
 
-    peakfunc (func) : 1d numpy ufunc that takes parameters of the form of inpars.
+    peakfunc (func) : 2d numpy ufunc that takes parameters (x values, y values, x_width, y_width)
+    where x_values and y_values are np.meshgrids
     
     peakfunc should be nomralized to a maximum of 1.0.
 
@@ -117,7 +118,7 @@ def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=No
         else:
             xp = x
             yp = y
-        g = height+amplitude*peakfunc(xp-rcen_x, width_x)*peakfunc(yp-rcen_y, width_y)
+        g = height+amplitude*peakfunc(xp-rcen_x, yp-rcen_y, width_x, width_y)
         return g
     if shape is not None:
         return rotpeak(*np.indices(shape))
