@@ -10,9 +10,14 @@ it was forked from Gaussfitter <https://github.com/keflavich/gaussfitter>, 12/20
 """
 from __future__ import print_function, division, absolute_import
 
+import itertools
+
 import numpy as np
 from numpy.ma import median
 from numpy import pi
+from scipy.special import genlaguerre
+
+
 from .mpfit import mpfit
 
 from .gaussfitter import moments
@@ -123,6 +128,318 @@ def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=No
         return rotpeak(*np.indices(shape))
     else:
         return rotpeak
+
+def mm_laguerregauss_2d(inpars, max_p=1, max_l=0, circle=False, rotate=True, vheight=True, shape=None):
+    """
+    Returns a multimode 2d elliptical Laguerre-Gaussian beam of the form:
+    x' = np.cos(rota) * x - np.sin(rota) * y
+    y' = np.sin(rota) * x + np.cos(rota) * y
+    (rota should be in degrees)
+    g = a + Sum(p, l) {b * LG((x'-center_x)/width_x) *
+    LG((y'-center_y)/width_y)}
+
+    inpars = [a,[b,...], center_x,center_y,width_x,width_y,rota]
+             (a is background height, b is a list of mode amplitudes)
+             
+    The maximum number of modes to fit are set by max_p and max_l.
+    
+    the final elements of inpars are a ravelled list of mode amplitudes for modes of order (p, l).  
+             
+    However, the above values are passed by list.  The list should be:
+    inpars = (height,amplitudes,center_x,center_y,width_x,width_y,rota)
+    
+    If the beam canb be reasonably approximated by
+    a fundamental Gaussian peak with parameters inpar, calculating the moments of the 
+    data to be fitted produces a reasonable starting point for the fitting.
+
+    You can choose to ignore / neglect some of the above input parameters using
+    the following options:
+
+    Parameters
+    ----------
+    circle : bool
+        default is an elliptical peak (different x, y widths), but can
+        reduce the input by one parameter if it's a circular peak
+    rotate : bool
+        default allows rotation of the peak ellipse.  Can
+        remove last parameter by setting rotate=0
+    vheight : bool
+        default allows a variable height-above-zero, i.e. an
+        additive constant for the peak function.  Can remove first
+        parameter by setting this to 0
+    shape : tuple
+        if shape is set (to a 2-parameter list) then returns an image with the
+        peak defined by inpars
+    """
+    inpars_old = inpars
+    inpars = list(inpars)
+    
+    if max_l == 0:
+        amplen = max_p+1
+        amps = np.array(inpars[-amplen:])
+        ampshape = amps.shape
+    else:
+        amplen = (max_p+1)*(max_l+1)
+        ampshape = (max_p+1, max_l+1)
+        amps = np.reshape(np.array(inpars[-amplen:]), ampshape)
+    
+    del inpars[-amplen:]
+    
+    if vheight:
+        height = inpars.pop(0)
+        height = float(height)
+    else:
+        height = float(0)
+    center_x, center_y = inpars.pop(0), inpars.pop(0)
+    center_x = float(center_x)
+    center_y = float(center_y)
+    if circle:
+        width = inpars.pop(0)
+        width_x = float(width)
+        width_y = float(width)
+        rotate = 0
+    else:
+        width_x, width_y = inpars.pop(0), inpars.pop(0)
+        width_x = float(width_x)
+        width_y = float(width_y)
+    if rotate:
+        rota = inpars.pop(0)
+        rota = pi/180. * float(rota)
+        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
+        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
+    else:
+        rcen_x = center_x
+        rcen_y = center_y
+        
+    if len(inpars) > 0:
+        raise ValueError("There are still input parameters:" + str(inpars) +
+                         " and you've input: " + str(inpars_old) +
+                         " circle=%d, rotate=%d, vheight=%d" % (circle, rotate, vheight))
+        
+    def rotpeak(x, y):
+        if rotate:
+            xp = ((x * np.cos(rota) - y * np.sin(rota))-rcen_x)/width_x
+            yp = ((x * np.sin(rota) + y * np.cos(rota))-rcen_y)/width_y
+        else:
+            xp = x/width_x
+            yp = y/width_y
+        
+        g = height
+    
+        for p in range(max_p+1):
+            for l in range(max_l+1):
+                if max_l == 0:
+                    amp = amps[p]
+                else:
+                    amp = amps[p,l]
+                g = g + float(amp)*laguerre_gauss2d(xp, yp, p, l)
+        return np.abs(g)**2
+    
+    if shape is not None:
+        return rotpeak(*np.indices(shape))
+    else:
+        return rotpeak
+
+
+def laguerre_gauss2d(x, y, p, l):
+    """Return the (p,l)th 2d Laguerre Gauss mode amplitude profile.
+    
+    Parameters:
+        x (np.ndarray) : array of normalized x positions in the mode.
+        y (np.ndarray) : array of normalized x positions in the mode.
+        p (int)        : radial mode number.
+        l (int)        : azimuthal mode number.
+        
+    Returns:
+        np.ndarray : array of mode amplitudes."""
+
+    r = np.sqrt(x**2 + y**2)
+    phi = np.arctan2(y,x)
+
+    c_lp = np.sqrt(2*np.math.factorial(p)/(np.pi*np.math.factorial(p+abs(l))))
+    
+    l_lp = genlaguerre(p, abs(l))(2*r**2)
+    
+    return c_lp * l_lp * (r*np.sqrt(2))**abs(l) * np.exp(-(r**2)) * np.exp(-1j*l*phi)
+
+
+def mm_laguerregauss2d_fit(data, max_p=1, max_l=0, err=None, params=(), autoderiv=True, return_error=False,
+             circle=False, fixed=np.repeat(False, 6),
+             limitedmin=[False, True, True, True, True, True],
+             limitedmax=[False, False, False, False, False, True],
+             usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 6),
+             maxpars=np.array([0, 0, 0, 0, 0, 180]), minamp=0.0, maxamp=2.0, limitedampmin=True, limitedampmax=False, rotate=True, vheight=True,
+             quiet=True, returnmp=False, returnfitimage=False, **kwargs):
+    """
+    Peak fitter with the ability to fit multimode Laguerre-Gaussian mode intensities
+
+    Parameters
+    ----------
+    data : `numpy.ndarray`
+        2-dimensional data array
+    max_p : `int`
+        Highest radial mode number to include
+    max_l : `int`
+        Highest azimuthal mode number to include
+    err : `numpy.ndarray` or None
+        error array with same size as data array.  Defaults to 1 everywhere.
+    params : (background, x, y, width_x, width_y, rota, amplitudes)
+        Initial input parameters for Gaussian function.  If not input, these
+        will be determined from the moments of the system, assuming no rotation
+    autoderiv : bool
+        Use the autoderiv provided in the lmder.f function (the alternative is
+        to us an analytic derivative with lmdif.f: this method is less robust)
+    return_error : bool
+        Default is to return only the Gaussian parameters.
+        If ``True``, return fit params & fit error
+    returnfitimage : bool
+        returns (best fit params,best fit image)
+    returnmp : bool
+        returns the full mpfit struct
+    circle : bool
+        The default is to fit an elliptical gaussian (different x, y widths),
+        but the input is reduced by one parameter if it's a circular gaussian.
+    rotate : bool
+        Allow rotation of the gaussian ellipse.  Can remove
+        last parameter of input & fit by setting rotate=False.
+        Angle should be specified in degrees.
+    vheight : bool
+        Allows a variable height-above-zero, i.e. an additive constant
+        background for the Gaussian function.  Can remove the first fitter
+        parameter by setting this to ``False``
+    usemoment : `numpy.ndarray`, dtype='bool'
+        Array to choose which parameters to use a moment estimation for.  Other
+        parameters will be taken from params.
+
+    Returns
+    -------
+    (params, [parerr], [fitimage]) | (mpfit, [fitimage])
+    parameters : list
+        The default output is a set of Gaussian parameters with the same shape
+        as the input parameters
+    fitimage : `numpy.ndarray`
+        If returnfitimage==True, the last return will be a 2D array holding the
+        best-fit model
+    mpfit : `mpfit` object
+        If ``returnmp==True`` returns a `mpfit` object. This object contains a
+        `covar` attribute which is the 7x7 covariance array generated by the
+        mpfit class in the `mpfit_custom.py` module. It contains a `param`
+        attribute that contains a list of the best fit parameters in the same
+        order as the optional input parameter `params`.
+    """
+    data = data.view(np.ma.MaskedArray).view('float')
+    usemoment = np.array(usemoment, dtype='bool')
+    
+    amplen = (max_p+1)*(max_l+1)
+    ampshape = (max_p+1, max_l+1)
+    amps = np.repeat(0, amplen)
+    
+    modenum = list(itertools.product(range(max_p+1), range(max_l+1)))
+    
+    params = np.array(params, dtype='float')
+    if usemoment.any() and len(params) == len(usemoment):
+        moms = moments(data, circle, rotate, vheight, **kwargs)
+        # Take the amplitude from the moments and and put into the amplitude list for mode (0,0)
+        if vheight:
+            amps[0] = moms.pop(1)
+        else:
+            amps[0] = moms.pop(0)
+        moment = np.array(moms, dtype='float')
+        params[usemoment] = moment[usemoment]    
+    elif params == [] or len(params) == 0:
+        params = (moments(data, circle, rotate, vheight, **kwargs))
+        # Take the amplitude from the moments and and put into the amplitude list for mode (0,0)
+        if vheight:
+            amps[0] = params.pop(1)
+        else:
+            amps[0] = params.pop(0)
+    
+    
+    if not vheight:
+        # If vheight is not set, we set it for sub-function calls but fix the
+        # parameter at zero
+        vheight=True
+        params = np.concatenate([[0],params])
+        fixed[0] = 1
+
+    # mpfit will fail if it is given a start parameter outside the allowed range:
+    for i in range(len(params)):
+        if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
+        if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
+            
+    for i in range(len(amps)):
+        if amps[i] > maxamp and limitedampmax: amps[i] = maxamp
+        if amps[i] < minamp and limitedampmin: amps[i] = minamp
+        
+    params = np.concatenate((params, amps))
+
+    # One time: check if error is set, otherwise fix it at 1.
+    err = err if err is not None else 1.0
+
+    def mpfitfun(data, err):
+        def f(p, fjac):
+            twodp = mm_laguerregauss_2d(p, max_p=max_p, max_l=max_l, circle=circle, rotate=rotate, vheight=vheight)
+            delta = (data - twodp(*np.indices(data.shape))) / err
+            return [0, delta.compressed()]
+        return f
+
+    parinfo = [{'n': 1, 'value': params[1], 'limits': [minpars[1], maxpars[1]],
+                'limited': [limitedmin[1], limitedmax[1]], 'fixed': fixed[1],
+                'parname': "XSHIFT", 'error': 0},
+               {'n': 2, 'value': params[2], 'limits': [minpars[2], maxpars[2]],
+                'limited': [limitedmin[2], limitedmax[2]], 'fixed': fixed[2],
+                'parname': "YSHIFT", 'error': 0},
+               {'n': 3, 'value': params[3], 'limits': [minpars[3], maxpars[3]],
+                'limited': [limitedmin[3], limitedmax[3]], 'fixed': fixed[3],
+                'parname': "XWIDTH", 'error': 0}]
+    if vheight:
+        parinfo.insert(0, {'n': 0, 'value': params[0], 'limits': [minpars[0], maxpars[0]],
+                           'limited': [limitedmin[0], limitedmax[0]], 'fixed': fixed[0],
+                           'parname': "HEIGHT", 'error': 0})
+    if not circle:
+        parinfo.append({'n': 4, 'value': params[4], 'limits': [minpars[4], maxpars[4]],
+                        'limited': [limitedmin[4], limitedmax[4]], 'fixed': fixed[4],
+                        'parname': "YWIDTH", 'error': 0})
+        if rotate:
+            parinfo.append({'n': 5, 'value': params[5], 'limits': [minpars[5], maxpars[5]],
+                            'limited': [limitedmin[5], limitedmax[5]], 'fixed': fixed[5],
+                            'parname': "ROTATION", 'error': 0})
+            
+    n = parinfo[-1]['n'] + 1
+    for i, a in enumerate(amps):
+        parinfo.append({'n': n+i, 'value': params[n+1], 'limits': [minamp, maxamp], 
+                        'limited': [limitedampmin, limitedampmax], 'fixed': False,
+                        'parname': f"MODEAMP {modenum[i]}", 'error': 0})
+
+    if not autoderiv:
+        raise NotImplementedError("I'm sorry, I haven't implemented this feature yet.  "
+                                  "Given that I wrote this message in 2008, "
+                                  "it will probably never be implemented.")
+    else:
+        mp = mpfit(mpfitfun(data, err), parinfo=parinfo, quiet=quiet)
+
+    if mp.errmsg:
+        raise Exception("MPFIT error: {0}".format(mp.errmsg))
+
+    if (not circle) and rotate:
+        mp.params[-1] %= 180.0
+
+    mp.chi2 = mp.fnorm
+    try:
+        mp.chi2n = mp.fnorm/mp.dof
+    except ZeroDivisionError:
+        mp.chi2n = np.nan
+
+    if returnmp:
+        returns = (mp)
+    elif return_error:
+        returns = mp.params, mp.perror
+    else:
+        returns = mp.params
+    if returnfitimage:
+        fitimage = mm_laguerregauss_2d(mp.params, max_p=max_p, max_l=max_l, circle=circle, rotate=rotate, vheight=vheight)(*np.indices(data.shape))
+        returns = (returns, fitimage)
+    return returns
 
 
 def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=False,

@@ -17,4 +17,4 @@ if not _ASTROPY_SETUP_:
                              twodgaussian)
     from .peakfitter import (collapse_peakfit, peakfit, multipeakfit,
                             n_peak, onedpeakfit, onedpeak,
-                            twodpeak)
+                            twodpeak, mm_laguerregauss_2d, mm_laguerregauss2d_fit, laguerre_gauss2d)
