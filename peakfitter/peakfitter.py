@@ -37,7 +37,7 @@ Alternative: lmfit
     -implement WCS-based gaussian fitting with correct coordinates
 """
 
-def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=None):
+def twodpeak_onedfunc(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=None):
     """
     Returns a 2d peak function of the form:
     x' = np.cos(rota) * x - np.sin(rota) * y
@@ -46,7 +46,7 @@ def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=No
     g = b + a * <peakfunc>((x'-center_x), width_x) *
     <peakfunc>((y'-center_y), width_y)
 
-    peakfunc (func) : 1d numpy ufunc that takes parameters of the form of inpars.
+    peakfunc (func) : 1d numpy ufunc that takes parameters of the form of [center, width]
     
     peakfunc should be nomralized to a maximum of 1.0.
 
@@ -123,6 +123,98 @@ def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=No
             xp = x
             yp = y
         g = height+amplitude*peakfunc(xp-rcen_x, width_x)*peakfunc(yp-rcen_y, width_y)
+        return g
+    if shape is not None:
+        return rotpeak(*np.indices(shape))
+    else:
+        return rotpeak
+
+def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=None):
+    """
+    Returns a 2d peak function of the form:
+    x' = np.cos(rota) * x - np.sin(rota) * y
+    y' = np.sin(rota) * x + np.cos(rota) * y
+    (rota should be in degrees)
+    g = b + a * <peakfunc>((x'-center_x), width_x) *
+    <peakfunc>((y'-center_y), width_y)
+
+    peakfunc (func) : 2d numpy ufunc that takes parameters of the form of inpars[2:6].
+    
+    peakfunc should be nomralized to a maximum of 1.0.
+
+    inpars = [b,a,center_x,center_y,width_x,width_y,rota]
+             (b is background height, a is peak amplitude)
+             
+    where x and y are the input parameters of the returned function,
+    and all other parameters are specified by this function.
+    
+    However, the above values are passed by list.  The list should be:
+    inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
+    
+    Widths are defined such that the peakfunc is reasonably approximated by
+    a Gaussian peak with parameters inpar, so that calculating the moments of the 
+    data to be fitted produces a reasonable starting point for the fitting.
+
+    You can choose to ignore / neglect some of the above input parameters using
+    the following options:
+
+    Parameters
+    ----------
+    circle : bool
+        default is an elliptical peak (different x, y widths), but can
+        reduce the input by one parameter if it's a circular peak
+    rotate : bool
+        default allows rotation of the peak ellipse.  Can
+        remove last parameter by setting rotate=0
+    vheight : bool
+        default allows a variable height-above-zero, i.e. an
+        additive constant for the peak function.  Can remove first
+        parameter by setting this to 0
+    shape : tuple
+        if shape is set (to a 2-parameter list) then returns an image with the
+        peak defined by inpars
+    """
+    inpars_old = inpars
+    inpars = list(inpars)
+    if vheight:
+        height = inpars.pop(0)
+        height = float(height)
+    else:
+        height = float(0)
+    amplitude, center_y, center_x = inpars.pop(0), inpars.pop(0), inpars.pop(0)
+    amplitude = float(amplitude)
+    center_x = float(center_x)
+    center_y = float(center_y)
+    if circle:
+        width = inpars.pop(0)
+        width_x = float(width)
+        width_y = float(width)
+        rotate = 0
+    else:
+        width_x, width_y = inpars.pop(0), inpars.pop(0)
+        width_x = float(width_x)
+        width_y = float(width_y)
+    if rotate:
+        rota = inpars.pop(0)
+        rota = pi/180. * float(rota)
+        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
+        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
+    else:
+        rcen_x = center_x
+        rcen_y = center_y
+    if len(inpars) > 0:
+        raise ValueError("There are still input parameters:" + str(inpars) +
+                         " and you've input: " + str(inpars_old) +
+                         " circle=%d, rotate=%d, vheight=%d" % (circle, rotate, vheight))
+
+    def rotpeak(x, y):
+        if rotate:
+            xp = x * np.cos(rota) - y * np.sin(rota)
+            yp = x * np.sin(rota) + y * np.cos(rota)
+        else:
+            xp = x
+            yp = y
+        g = height+amplitude*peakfunc(xp-rcen_x, yp-rcen_y, width_x, width_y)
         return g
     if shape is not None:
         return rotpeak(*np.indices(shape))
