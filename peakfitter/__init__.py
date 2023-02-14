@@ -10,8 +10,6 @@ This is an Astropy affiliated package.
 from ._astropy_init import *
 # ----------------------------------------------------------------------------
 
-# Maintain the version number here.
-__version__ = 0.1.0
 
 # For egg_info test builds to pass, put package imports here.
 if not _ASTROPY_SETUP_:
