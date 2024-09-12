@@ -62,4 +62,4 @@ docs/api
 target/
 
 
-gaussfitter/version.py
+peakfitter/version.py

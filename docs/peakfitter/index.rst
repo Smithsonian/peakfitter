@@ -1,17 +1,17 @@
 ***********
-Gaussfitter
+Peakfitter
 ***********
 
-Documentation for gaussfitter.
+Documentation for peakfitter.
 
-Simple Example
---------------
+Simple Example for Gaussfitter code
+-----------------------------------
 
 .. code-block:: python
 
    from astropy.io import fits
    from astropy import wcs
-   from gaussfitter import gaussfit
+   from peakfitter import gaussfit
 
    file = fits.open('file.fits')
 
@@ -30,12 +30,12 @@ Simple Example
    # convert to world coordinates
    ra, dec = mywcs.all_pix2world(xc, yc, 0)
 
-Another Simple Example
-----------------------
+Another Simple Example for Gaussfitter code
+-------------------------------------------
 
 .. code-block:: python
 
-    from gaussfitter import gaussfit
+    from peakfitter import gaussfit
     from astropy.io import fits
     import pylab as pl
     d = fits.getdata('W51e2_99_pa90.pv.fits')
@@ -54,8 +54,8 @@ Another Simple Example
     pl.annotate("x0 = {0:0.2f} arcsec".format(float(xc)), xy=(0.75, 0.66), xycoords='figure fraction',)
     pl.savefig("pv_gfit.png")
 
-An example comparing with astropy's modeling
---------------------------------------------
+An example comparing Gaussfitter code with astropy's modeling
+-------------------------------------------------------------
 
 .. code-block:: python
 
@@ -65,7 +65,7 @@ An example comparing with astropy's modeling
 
     im = fits.getdata('IC860CbandCarrayH2COJ1Cont.fits')
 
-    from gaussfitter import gaussfit
+    from peakfitter import gaussfit
     from astropy.modeling import models,fitting
 
     M = models.Gaussian2D(0.02, 16, 14, 3, 3)
@@ -90,5 +90,5 @@ An example comparing with astropy's modeling
 Reference/API
 =============
 
-.. automodapi:: gaussfitter
+.. automodapi:: peakfitter
     :no-heading:

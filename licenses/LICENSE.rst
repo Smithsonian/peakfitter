@@ -1,4 +1,5 @@
-Copyright 2022 Adam Ginsburg
+Peakfitter additions Copyright 2022 Paul Grimes
+Original Gaussfitter code Copyright 2022 Adam Ginsburg
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
