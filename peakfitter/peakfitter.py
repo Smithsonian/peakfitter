@@ -46,99 +46,8 @@ def twodpeak_onedfunc(peakfunc, inpars, circle=False, rotate=True, vheight=True,
     g = b + a * <peakfunc>((x'-center_x), width_x) *
     <peakfunc>((y'-center_y), width_y)
 
-    peakfunc (func) : 1d numpy ufunc that takes parameters of the form of [center, width]
-    
-    peakfunc should be nomralized to a maximum of 1.0.
-
-    inpars = [b,a,center_x,center_y,width_x,width_y,rota]
-             (b is background height, a is peak amplitude)
-             
-    where x and y are the input parameters of the returned function,
-    and all other parameters are specified by this function.
-    
-    However, the above values are passed by list.  The list should be:
-    inpars = (height,amplitude,center_x,center_y,width_x,width_y,rota)
-    
-    Widths are defined such that the peakfunc is reasonably approximated by
-    a Gaussian peak with parameters inpar, so that calculating the moments of the 
-    data to be fitted produces a reasonable starting point for the fitting.
-
-    You can choose to ignore / neglect some of the above input parameters using
-    the following options:
-
-    Parameters
-    ----------
-    circle : bool
-        default is an elliptical peak (different x, y widths), but can
-        reduce the input by one parameter if it's a circular peak
-    rotate : bool
-        default allows rotation of the peak ellipse.  Can
-        remove last parameter by setting rotate=0
-    vheight : bool
-        default allows a variable height-above-zero, i.e. an
-        additive constant for the peak function.  Can remove first
-        parameter by setting this to 0
-    shape : tuple
-        if shape is set (to a 2-parameter list) then returns an image with the
-        peak defined by inpars
-    """
-    inpars_old = inpars
-    inpars = list(inpars)
-    if vheight:
-        height = inpars.pop(0)
-        height = float(height)
-    else:
-        height = float(0)
-    amplitude, center_y, center_x = inpars.pop(0), inpars.pop(0), inpars.pop(0)
-    amplitude = float(amplitude)
-    center_x = float(center_x)
-    center_y = float(center_y)
-    if circle:
-        width = inpars.pop(0)
-        width_x = float(width)
-        width_y = float(width)
-        rotate = 0
-    else:
-        width_x, width_y = inpars.pop(0), inpars.pop(0)
-        width_x = float(width_x)
-        width_y = float(width_y)
-    if rotate:
-        rota = inpars.pop(0)
-        rota = pi/180. * float(rota)
-        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
-        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
-    else:
-        rcen_x = center_x
-        rcen_y = center_y
-    if len(inpars) > 0:
-        raise ValueError("There are still input parameters:" + str(inpars) +
-                         " and you've input: " + str(inpars_old) +
-                         " circle=%d, rotate=%d, vheight=%d" % (circle, rotate, vheight))
-
-    def rotpeak(x, y):
-        if rotate:
-            xp = x * np.cos(rota) - y * np.sin(rota)
-            yp = x * np.sin(rota) + y * np.cos(rota)
-        else:
-            xp = x
-            yp = y
-        g = height+amplitude*peakfunc(xp-rcen_x, width_x)*peakfunc(yp-rcen_y, width_y)
-        return g
-    if shape is not None:
-        return rotpeak(*np.indices(shape))
-    else:
-        return rotpeak
-
-def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=None):
-    """
-    Returns a 2d peak function of the form:
-    x' = np.cos(rota) * x - np.sin(rota) * y
-    y' = np.sin(rota) * x + np.cos(rota) * y
-    (rota should be in degrees)
-    g = b + a * <peakfunc>((x'-center_x), width_x) *
-    <peakfunc>((y'-center_y), width_y)
-
-    peakfunc (func) : 2d numpy ufunc that takes parameters of the form of inpars[2:6].
+    peakfunc (func) : 2d numpy ufunc that takes parameters (x values, y values, x_width, y_width)
+    where x_values and y_values are np.meshgrids
     
     peakfunc should be nomralized to a maximum of 1.0.
 
@@ -221,146 +130,13 @@ def twodpeak(peakfunc, inpars, circle=False, rotate=True, vheight=True, shape=No
     else:
         return rotpeak
 
-def mm_laguerregauss_2d(inpars, max_p=1, max_l=0, circle=False, rotate=True, vheight=True, shape=None):
-    """
-    Returns a multimode 2d elliptical Laguerre-Gaussian beam of the form:
-    x' = np.cos(rota) * x - np.sin(rota) * y
-    y' = np.sin(rota) * x + np.cos(rota) * y
-    (rota should be in degrees)
-    g = a + Sum(p, l) {b * LG((x'-center_x)/width_x) *
-    LG((y'-center_y)/width_y)}
 
-    inpars = [a,[b,...], center_x,center_y,width_x,width_y,rota]
-             (a is background height, b is a list of mode amplitudes)
-             
-    The maximum number of modes to fit are set by max_p and max_l.
-    
-    the final elements of inpars are a ravelled list of mode amplitudes for modes of order (p, l).  
-             
-    However, the above values are passed by list.  The list should be:
-    inpars = (height,amplitudes,center_x,center_y,width_x,width_y,rota)
-    
-    If the beam canb be reasonably approximated by
-    a fundamental Gaussian peak with parameters inpar, calculating the moments of the 
-    data to be fitted produces a reasonable starting point for the fitting.
-
-    You can choose to ignore / neglect some of the above input parameters using
-    the following options:
-
-    Parameters
-    ----------
-    circle : bool
-        default is an elliptical peak (different x, y widths), but can
-        reduce the input by one parameter if it's a circular peak
-    rotate : bool
-        default allows rotation of the peak ellipse.  Can
-        remove last parameter by setting rotate=0
-    vheight : bool
-        default allows a variable height-above-zero, i.e. an
-        additive constant for the peak function.  Can remove first
-        parameter by setting this to 0
-    shape : tuple
-        if shape is set (to a 2-parameter list) then returns an image with the
-        peak defined by inpars
-    """
-    inpars_old = inpars
-    inpars = list(inpars)
-    
-    if max_l == 0:
-        amplen = max_p+1
-        amps = np.array(inpars[-amplen:])
-        ampshape = amps.shape
-    else:
-        amplen = (max_p+1)*(max_l+1)
-        ampshape = (max_p+1, max_l+1)
-        amps = np.reshape(np.array(inpars[-amplen:]), ampshape)
-    
-    del inpars[-amplen:]
-    
-    if vheight:
-        height = inpars.pop(0)
-        height = float(height)
-    else:
-        height = float(0)
-    center_x, center_y = inpars.pop(0), inpars.pop(0)
-    center_x = float(center_x)
-    center_y = float(center_y)
-    if circle:
-        width = inpars.pop(0)
-        width_x = float(width)
-        width_y = float(width)
-        rotate = 0
-    else:
-        width_x, width_y = inpars.pop(0), inpars.pop(0)
-        width_x = float(width_x)
-        width_y = float(width_y)
-    if rotate:
-        rota = inpars.pop(0)
-        rota = pi/180. * float(rota)
-        rcen_x = center_x * np.cos(rota) - center_y * np.sin(rota)
-        rcen_y = center_x * np.sin(rota) + center_y * np.cos(rota)
-    else:
-        rcen_x = center_x
-        rcen_y = center_y
-        
-    if len(inpars) > 0:
-        raise ValueError("There are still input parameters:" + str(inpars) +
-                         " and you've input: " + str(inpars_old) +
-                         " circle=%d, rotate=%d, vheight=%d" % (circle, rotate, vheight))
-        
-    def rotpeak(x, y):
-        if rotate:
-            xp = ((x * np.cos(rota) - y * np.sin(rota))-rcen_x)/width_x
-            yp = ((x * np.sin(rota) + y * np.cos(rota))-rcen_y)/width_y
-        else:
-            xp = x/width_x
-            yp = y/width_y
-        
-        g = height
-    
-        for p in range(max_p+1):
-            for l in range(max_l+1):
-                if max_l == 0:
-                    amp = amps[p]
-                else:
-                    amp = amps[p,l]
-                g = g + float(amp)*laguerre_gauss2d(xp, yp, p, l)
-        return np.abs(g)**2
-    
-    if shape is not None:
-        return rotpeak(*np.indices(shape))
-    else:
-        return rotpeak
-
-
-def laguerre_gauss2d(x, y, p, l):
-    """Return the (p,l)th 2d Laguerre Gauss mode amplitude profile.
-    
-    Parameters:
-        x (np.ndarray) : array of normalized x positions in the mode.
-        y (np.ndarray) : array of normalized x positions in the mode.
-        p (int)        : radial mode number.
-        l (int)        : azimuthal mode number.
-        
-    Returns:
-        np.ndarray : array of mode amplitudes."""
-
-    r = np.sqrt(x**2 + y**2)
-    phi = np.arctan2(y,x)
-
-    c_lp = np.sqrt(2*np.math.factorial(p)/(np.pi*np.math.factorial(p+abs(l))))
-    
-    l_lp = genlaguerre(p, abs(l))(2*r**2)
-    
-    return c_lp * l_lp * (r*np.sqrt(2))**abs(l) * np.exp(-(r**2)) * np.exp(-1j*l*phi)
-
-
-def mm_laguerregauss2d_fit(data, max_p=1, max_l=0, err=None, params=(), autoderiv=True, return_error=False,
-             circle=False, fixed=np.repeat(False, 6),
-             limitedmin=[False, True, True, True, True, True],
-             limitedmax=[False, False, False, False, False, True],
-             usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 6),
-             maxpars=np.array([0, 0, 0, 0, 0, 180]), minamp=0.0, maxamp=2.0, limitedampmin=True, limitedampmax=False, rotate=True, vheight=True,
+def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=False,
+             circle=False, fixed=np.repeat(False, 7),
+             limitedmin=[False, False, False, False, True, True, True],
+             limitedmax=[False, False, False, False, False, False, True],
+             usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 7),
+             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, height=True, vheight=True,
              quiet=True, returnmp=False, returnfitimage=False, **kwargs):
     """
     Peak fitter with the ability to fit multimode Laguerre-Gaussian mode intensities
@@ -395,6 +171,10 @@ def mm_laguerregauss2d_fit(data, max_p=1, max_l=0, err=None, params=(), autoderi
         Allow rotation of the gaussian ellipse.  Can remove
         last parameter of input & fit by setting rotate=False.
         Angle should be specified in degrees.
+    height : bool
+        Allows a variable amplitude.  Can remove the second fitter
+        parameter by setting this to ``False``, which fixes the peak height
+        to that of the fitting function.
     vheight : bool
         Allows a variable height-above-zero, i.e. an additive constant
         background for the Gaussian function.  Can remove the first fitter
@@ -539,7 +319,7 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
              limitedmin=[False, False, False, False, True, True, True],
              limitedmax=[False, False, False, False, False, False, True],
              usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 7),
-             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, vheight=True,
+             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, height=True, vheight=True,
              quiet=True, returnmp=False, returnfitimage=False, **kwargs):
     """
     Peak fitter with the ability to fit a variety of different forms of
@@ -574,6 +354,10 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
         Allow rotation of the gaussian ellipse.  Can remove
         last parameter of input & fit by setting rotate=False.
         Angle should be specified in degrees.
+    height : bool
+        Allows a variable amplitude.  Can remove the second fitter
+        parameter by setting this to ``False``, which fixes the peak height
+        to that of the fitting function.
     vheight : bool
         Allows a variable height-above-zero, i.e. an additive constant
         background for the Gaussian function.  Can remove the first fitter
@@ -611,7 +395,11 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
         # parameter at zero
         vheight=True
         params = np.concatenate([[0],params])
-        fixed[0] = 1
+        fixed[0] = True
+    if not height:
+        height=True
+        params[1] = 1.0
+        fixed[1] = True
 
     # mpfit will fail if it is given a start parameter outside the allowed range:
     for i in range(len(params)):
