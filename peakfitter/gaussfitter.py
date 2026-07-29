@@ -225,7 +225,7 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
     if usemoment.any() and len(params) == len(usemoment):
         moment = np.array(moments(data, circle, rotate, vheight, **kwargs), dtype='float')
         params[usemoment] = moment[usemoment]
-    elif params == [] or len(params) == 0:
+    elif params == () or len(params) == 0:
         params = (moments(data, circle, rotate, vheight, **kwargs))
     if not vheight:
         # If vheight is not set, we set it for sub-function calls but fix the
