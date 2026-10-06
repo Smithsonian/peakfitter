@@ -539,7 +539,7 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
              limitedmin=[False, False, False, False, True, True, True],
              limitedmax=[False, False, False, False, False, False, True],
              usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 7),
-             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, vheight=True,
+             maxpars=[1, 1, 1, 1, 1, 1, 180], rotate=True, vheight=True,
              quiet=True, returnmp=False, returnfitimage=False, **kwargs):
     """
     Peak fitter with the ability to fit a variety of different forms of
@@ -601,16 +601,20 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
     data = data.view(np.ma.MaskedArray).view('float')
     usemoment = np.array(usemoment, dtype='bool')
     params = np.array(params, dtype='float')
+    
     if usemoment.any() and len(params) == len(usemoment):
         moment = np.array(moments(data, circle, rotate, vheight, **kwargs), dtype='float')
         params[usemoment] = moment[usemoment]
     elif params == [] or len(params) == 0:
         params = (moments(data, circle, rotate, vheight, **kwargs))
+    
     if not vheight:
         # If vheight is not set, we set it for sub-function calls but fix the
         # parameter at zero
         vheight=True
         params = np.concatenate([[0],params])
+        maxpars = np.concatenate([[1e-9], maxpars])
+        minpars = np.concatenate([[-1e-9], minpars])
         fixed[0] = 1
 
     # mpfit will fail if it is given a start parameter outside the allowed range:

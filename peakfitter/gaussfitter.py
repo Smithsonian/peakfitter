@@ -60,6 +60,9 @@ def moments(data, circle, rotate, vheight, estimator=median, angle_guess=45.0,
         raise ValueError("something is nan")
     if vheight:
         mylist = [height] + mylist
+    else:
+        mylist = [0.0] + mylist
+        
     if not circle:
         mylist = mylist + [width_x, width_y]
         if rotate:
@@ -158,12 +161,12 @@ def twodgaussian(inpars, circle=False, rotate=True, vheight=True, shape=None):
         return rotgauss
 
 
-def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
+def gaussfit(data, err=None, params=None, autoderiv=True, return_error=False,
              circle=False, fixed=np.repeat(False, 7),
              limitedmin=[False, False, False, False, True, True, True],
              limitedmax=[False, False, False, False, False, False, True],
-             usemoment=np.array([], dtype='bool'), minpars=np.repeat(0, 7),
-             maxpars=[0, 0, 0, 0, 0, 0, 180], rotate=True, vheight=True,
+             usemoment=np.array([], dtype='bool'), minpars=np.repeat(0., 7),
+             maxpars=[1., 1., 1., 1., 1., 1., 180.], rotate=True, vheight=True,
              quiet=True, returnmp=False, returnfitimage=False, **kwargs):
     """
     Gaussian fitter with the ability to fit a variety of different forms of
@@ -180,7 +183,7 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
         will be determined from the moments of the system, assuming no rotation
     autoderiv : bool
         Use the autoderiv provided in the lmder.f function (the alternative is
-        to us an analytic derivative with lmdif.f: this method is less robust)
+        to use an analytic derivative with lmdif.f: this method is less robust)
     return_error : bool
         Default is to return only the Gaussian parameters.
         If ``True``, return fit params & fit error
@@ -222,21 +225,25 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
     data = data.view(np.ma.MaskedArray).view('float')
     usemoment = np.array(usemoment, dtype='bool')
     params = np.array(params, dtype='float')
+    
     if usemoment.any() and len(params) == len(usemoment):
         moment = np.array(moments(data, circle, rotate, vheight, **kwargs), dtype='float')
         params[usemoment] = moment[usemoment]
-    elif params == () or len(params) == 0:
+    elif np.isnan(params).any() or params.size == 0:
         params = (moments(data, circle, rotate, vheight, **kwargs))
+    
     if not vheight:
         # If vheight is not set, we set it for sub-function calls but fix the
         # parameter at zero
         vheight=True
-        params = np.concatenate([[0],params])
+        params = np.concatenate([[0.],params])
+        maxpars = np.concatenate([[0.], maxpars])
+        minpars = np.concatenate([[0.], minpars])
         fixed[0] = 1
 
     # mpfit will fail if it is given a start parameter outside the allowed range:
     for i in range(len(params)):
-        if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
+        if params[i] is None or (params[i] > maxpars[i] and limitedmax[i]): params[i] = maxpars[i]
         if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
 
     # One time: check if error is set, otherwise fix it at 1.
@@ -261,10 +268,12 @@ def gaussfit(data, err=None, params=(), autoderiv=True, return_error=False,
                {'n': 4, 'value': params[4], 'limits': [minpars[4], maxpars[4]],
                 'limited': [limitedmin[4], limitedmax[4]], 'fixed': fixed[4],
                 'parname': "XWIDTH", 'error': 0}]
+
     if vheight:
         parinfo.insert(0, {'n': 0, 'value': params[0], 'limits': [minpars[0], maxpars[0]],
                            'limited': [limitedmin[0], limitedmax[0]], 'fixed': fixed[0],
                            'parname': "HEIGHT", 'error': 0})
+
     if not circle:
         parinfo.append({'n': 5, 'value': params[5], 'limits': [minpars[5], maxpars[5]],
                         'limited': [limitedmin[5], limitedmax[5]], 'fixed': fixed[5],
