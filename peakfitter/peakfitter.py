@@ -605,22 +605,21 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
     if usemoment.any() and len(params) == len(usemoment):
         moment = np.array(moments(data, circle, rotate, vheight, **kwargs), dtype='float')
         params[usemoment] = moment[usemoment]
-    elif params == [] or len(params) == 0:
+
+    elif np.isnan(params).any() or params.size == 0:
         params = (moments(data, circle, rotate, vheight, **kwargs))
-    
-    if not vheight:
-        # If vheight is not set, we set it for sub-function calls but fix the
-        # parameter at zero
-        vheight=True
-        params = np.concatenate([[0],params])
-        maxpars = np.concatenate([[1e-9], maxpars])
-        minpars = np.concatenate([[-1e-9], minpars])
-        fixed[0] = 1
 
     # mpfit will fail if it is given a start parameter outside the allowed range:
     for i in range(len(params)):
-        if params[i] > maxpars[i] and limitedmax[i]: params[i] = maxpars[i]
+        if params[i] is None or (params[i] > maxpars[i] and limitedmax[i]): params[i] = maxpars[i]
         if params[i] < minpars[i] and limitedmin[i]: params[i] = minpars[i]
+
+    # if vheight is not wanted, we fix it at 0.0.
+    if not vheight:
+        params[0] = 0.0
+        fixed[0] = True
+        minpars[0] = -1.0
+        maxpars[0] = 1.0
 
     # One time: check if error is set, otherwise fix it at 1.
     err = err if err is not None else 1.0
@@ -684,8 +683,17 @@ def peakfit(peakfunc, data, err=None, params=(), autoderiv=True, return_error=Fa
         returns = (mp)
     elif return_error:
         returns = mp.params,mp.perror
-    else:
-        returns = mp.params
+    if returnmp:
+        returns = (mp)
+        
+    if not vheight:
+        returns = np.insert(returns, 0, 0.0)
+        
+    if circle:
+        returns = np.insert(returns, -1, returns[-1])
+        if not rotate:
+            returns = np.insert(returns, -1, 0.0)
+
     if returnfitimage:
         fitimage = twodpeak(peakfunc, mp.params, circle, rotate, vheight)(*np.indices(data.shape))
         returns = (returns, fitimage)
